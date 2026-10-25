@@ -208,6 +208,51 @@ export async function executeFlow(flow: BotFlow, clientId: string, jid: string, 
   }
 }
 
+/** Execute a flow without WhatsApp or database side effects and return the reply trace. */
+export function simulateFlow(flow: BotFlow, incomingMessage: string): { message: string; steps: string[]; waiting: boolean } {
+  const variables: Record<string, any> = { ...(flow.variables || {}), message: incomingMessage, sender: 'test@s.whatsapp.net', sender_number: 'TEST_CUSTOMER' };
+  const steps: string[] = [];
+  let nodeId: string | null = flow.nodes.find(n => n.type === 'trigger' || n.type === 'start')?.id ?? null;
+  let waiting = false;
+  let count = 0;
+
+  while (nodeId && count++ < 50) {
+    const node = flow.nodes.find(n => n.id === nodeId);
+    if (!node) break;
+    if (node.type === 'send_message') {
+      const text = formatOutboundText(interpolateVars(node.data.message || '', variables));
+      if (text) steps.push(text);
+      nodeId = getNextNode(flow, node.id);
+    } else if (node.type === 'send_buttons') {
+      const title = interpolateVars(node.data.message || '', variables);
+      const buttons = Array.isArray(node.data.buttons) ? node.data.buttons : [];
+      const hasMenu = buttons.some((button: string) => title.toLowerCase().includes(button.toLowerCase())) || /(^|\n)\s*\d+[.)]/.test(title);
+      const text = formatOutboundText(buttons.length && !hasMenu ? `${title}\n\n${buttons.map((b: string, i: number) => `${i + 1}. ${b}`).join('\n')}` : title);
+      if (text) steps.push(text);
+      nodeId = getNextNode(flow, node.id);
+    } else if (node.type === 'wait_for_reply') {
+      steps.push('WAITING FOR CUSTOMER REPLY');
+      waiting = true;
+      break;
+    } else if (node.type === 'condition') {
+      const field = interpolateVars(node.data.field || '{{message}}', variables);
+      const result = evaluateCondition(field, node.data.operator || 'contains', node.data.value || '');
+      steps.push(`CONDITION ${result ? 'MATCHED' : 'DID NOT MATCH'}: ${node.data.label || node.id}`);
+      const branch = flow.edges.find(e => e.source === node.id && e.sourceHandle === (result ? 'true' : 'false'));
+      nodeId = branch?.target ?? null;
+    } else if (node.type === 'human_handoff') {
+      const text = formatOutboundText(interpolateVars(node.data.message || 'A human agent will assist you shortly.', variables));
+      if (text) steps.push(text);
+      steps.push('HANDOFF TAG: human-handoff');
+      nodeId = getNextNode(flow, node.id);
+    } else {
+      if (node.type === 'set_variable') variables[node.data.variable || 'custom'] = interpolateVars(node.data.value || '', variables);
+      nodeId = getNextNode(flow, node.id);
+    }
+  }
+  return { message: incomingMessage, steps, waiting };
+}
+
 async function executeFromNode(flow: BotFlow, nodeId: string, ctx: ExecutionContext): Promise<void> {
   // Safety: max 50 nodes per execution to prevent infinite loops
   if (ctx.nodesExecuted > 50) throw new Error('Max node limit reached (50)');

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import type { Request, Response } from 'express';
-import { flowService, executeFlow } from '../services/flow-engine.js';
+import { flowService, executeFlow, simulateFlow } from '../services/flow-engine.js';
 
 const router = Router();
 
@@ -68,8 +68,13 @@ router.post('/pro/flows/:id/test', async (req: Request, res: Response) => {
   if (!flow) { res.status(404).json({ error: 'Flow not found' }); return; }
   const { message, jid, clientId } = req.body as { message?: string; jid?: string; clientId?: string };
   try {
-    await executeFlow(flow, clientId || flow.client_id, jid || 'test@s.whatsapp.net', message || 'test');
-    res.json({ success: true, message: 'Flow executed' });
+    if (req.body?.send === true) {
+      await executeFlow(flow, clientId || flow.client_id, jid || 'test@s.whatsapp.net', message || 'test');
+      res.json({ success: true, mode: 'send', message: 'Flow executed' });
+      return;
+    }
+    const result = simulateFlow(flow, message || 'test');
+    res.json({ success: true, mode: 'simulation', result });
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Execution failed' });
   }

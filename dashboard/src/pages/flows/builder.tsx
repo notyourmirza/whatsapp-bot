@@ -34,6 +34,8 @@ export default function FlowBuilder() {
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const [flowLoaded, setFlowLoaded] = useState(false);
+  const [testMessage, setTestMessage] = useState('hi');
+  const [testResult, setTestResult] = useState<{ steps: string[]; waiting: boolean } | null>(null);
 
   // Load flow data
   const { data } = useQuery({
@@ -62,8 +64,8 @@ export default function FlowBuilder() {
   });
 
   const testMutation = useMutation({
-    mutationFn: () => api.post(`/pro/flows/${id}/test`, { message: 'Test message from flow builder' }),
-    onSuccess: () => toast.success('Test execution complete'),
+    mutationFn: () => api.post<{ result: { steps: string[]; waiting: boolean } }>(`/pro/flows/${id}/test`, { message: testMessage }),
+    onSuccess: result => { setTestResult(result.result); toast.success('Simulation complete — see test output'); },
     onError: handleError,
   });
 
@@ -169,6 +171,7 @@ export default function FlowBuilder() {
             <Button size="sm" onClick={() => saveMutation.mutate()} isLoading={saveMutation.isPending}>
               <Save className="h-3.5 w-3.5" /> Save
             </Button>
+            <input value={testMessage} onChange={e => setTestMessage(e.target.value)} placeholder="Test customer message" className="h-8 w-40 rounded-md border border-[var(--border)] bg-[var(--bg)] px-2 text-xs text-[var(--text)]" />
             <Button size="sm" variant="secondary" onClick={() => testMutation.mutate()} isLoading={testMutation.isPending}>
               <Play className="h-3.5 w-3.5" /> Test
             </Button>
@@ -177,6 +180,14 @@ export default function FlowBuilder() {
             {flow?.enabled ? <><PowerOff className="h-3.5 w-3.5" /> Disable</> : <><Power className="h-3.5 w-3.5" /> Enable</>}
           </Button>
         </div>
+
+        {testResult && (
+          <div className="mx-4 mt-3 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3 text-xs text-[var(--text-sec)]">
+            <div className="mb-1 font-semibold text-emerald-400">TEST SIMULATION OUTPUT</div>
+            {testResult.steps.length ? testResult.steps.map((step, index) => <div key={index} className="whitespace-pre-wrap border-t border-white/5 py-1.5">{step}</div>) : <div>NO REPLY PATH WAS PRODUCED.</div>}
+            {testResult.waiting && <div className="mt-1 text-amber-300">NEXT: CUSTOMER REPLY REQUIRED</div>}
+          </div>
+        )}
 
         {/* ReactFlow Canvas */}
         <div ref={reactFlowWrapper} className="flex-1">
