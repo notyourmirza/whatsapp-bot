@@ -1,0 +1,8 @@
+PassengerAppRoot /home/u288997157/domains/palegreen-termite-565267.hostingersite.com/hbuilds/current/nodejs
+PassengerAppType node
+PassengerNodejs /opt/alt/alt-nodejs20/root/bin/node
+PassengerStartupFile hostinger-bootstrap.cjs
+PassengerBaseURI /
+PassengerRestartDir /home/u288997157/domains/palegreen-termite-565267.hostingersite.com/hbuilds/current/nodejs/tmp
+SetEnv NODE_OPTIONS "--require /home/u288997157/domains/palegreen-termite-565267.hostingersite.com/hbuilds/config/preload-timestamp.js"
+SetEnv LSNODE_CONSOLE_LOG console.log
