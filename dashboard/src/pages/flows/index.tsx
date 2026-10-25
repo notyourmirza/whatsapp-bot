@@ -15,6 +15,7 @@ import toast from 'react-hot-toast';
 interface BotFlow {
   id: string; name: string; description: string; client_id: string;
   trigger_type: string; enabled: boolean; nodes: any[]; edges: any[];
+  status?: 'draft' | 'published' | 'paused'; priority?: number;
   created_at: string; updated_at: string;
 }
 
@@ -120,8 +121,8 @@ export default function Flows() {
                     <h3 className="font-semibold text-[var(--text)] truncate">{f.name}</h3>
                     {f.description && <p className="text-xs text-[var(--text-muted)] mt-0.5 truncate">{f.description}</p>}
                   </div>
-                  <Badge variant={f.enabled ? 'success' : 'neutral'}>
-                    {f.enabled ? 'Active' : 'Draft'}
+                  <Badge variant={f.status === 'published' || f.enabled ? 'success' : f.status === 'paused' ? 'danger' : 'neutral'}>
+                    {f.status || (f.enabled ? 'published' : 'draft')}
                   </Badge>
                 </div>
 
@@ -129,6 +130,7 @@ export default function Flows() {
                   <span>Client {f.client_id}</span>
                   <span>{f.nodes.length} nodes</span>
                   <span>{f.edges.length} connections</span>
+                  <span>Priority {f.priority ?? 100}</span>
                 </div>
 
                 <div className="flex gap-1 pt-1" onClick={e => e.stopPropagation()}>

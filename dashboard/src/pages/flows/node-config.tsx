@@ -57,6 +57,13 @@ export function NodeConfigPanel({ node, onChange, onClose, onDelete }: NodeConfi
           </>
         )}
 
+        {node.type === 'send_buttons' && (
+          <>
+            <Textarea label="Menu Message" value={node.data.message || ''} onChange={e => update('message', e.target.value)} placeholder="Choose an option" />
+            <Input label="Buttons (comma separated)" value={(node.data.buttons || []).join(', ')} onChange={e => update('buttons', e.target.value.split(',').map(v => v.trim()).filter(Boolean))} placeholder="Services, Pricing, Support" />
+          </>
+        )}
+
         {/* Send Template */}
         {node.type === 'send_template' && (
           <Input label="Template ID" value={node.data.templateId || ''} onChange={e => update('templateId', e.target.value)} placeholder="Template UUID" />
@@ -108,6 +115,30 @@ export function NodeConfigPanel({ node, onChange, onClose, onDelete }: NodeConfi
         {/* Add Tag */}
         {node.type === 'add_tag' && (
           <Input label="Tag Name" value={node.data.tag || ''} onChange={e => update('tag', e.target.value)} placeholder="vip, support, new" />
+        )}
+
+        {node.type === 'human_handoff' && (
+          <Textarea label="Handoff Message" value={node.data.message || ''} onChange={e => update('message', e.target.value)} placeholder="A human agent will assist you shortly." />
+        )}
+
+        {node.type === 'business_hours' && (
+          <>
+            <Input label="Timezone" value={node.data.timezone || ''} onChange={e => update('timezone', e.target.value)} placeholder="Asia/Dhaka" />
+            <Input label="Schedule" value={node.data.schedule || ''} onChange={e => update('schedule', e.target.value)} placeholder="Mon-Fri 09:00-18:00" />
+          </>
+        )}
+
+        {node.type === 'follow_up' && (
+          <>
+            <Input label="Delay (hours)" type="number" value={node.data.delay_hours || 24} onChange={e => update('delay_hours', Number(e.target.value))} />
+            <Textarea label="Follow-up Message" value={node.data.message || ''} onChange={e => update('message', e.target.value)} placeholder="Following up on your request" />
+          </>
+        )}
+
+        {node.type === 'broadcast_optin' && <p className="text-xs text-[var(--text-muted)]">Records consent using the broadcast-opt-in contact tag. Use campaign controls for sending.</p>}
+
+        {node.type === 'order_status' && (
+          <Input label="Status API URL (optional)" value={node.data.status_endpoint || ''} onChange={e => update('status_endpoint', e.target.value)} placeholder="https://your-api.example/orders/{{message}}" />
         )}
 
         {/* HTTP Request */}

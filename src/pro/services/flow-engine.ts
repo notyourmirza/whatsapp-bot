@@ -5,6 +5,7 @@ import { aiManager } from '../../core/ai/manager.js';
 import { contactsService } from './contacts.js';
 import { templatesService } from './templates.js';
 import axios from 'axios';
+import { createHash } from 'crypto';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -34,6 +35,10 @@ export interface BotFlow {
   edges: FlowEdge[];
   variables: Record<string, any>;
   enabled: boolean;
+  status: 'draft' | 'published' | 'paused';
+  priority: number;
+  dedupe_window_seconds: number;
+  settings: Record<string, any>;
   created_at: string;
   updated_at: string;
 }
@@ -52,7 +57,7 @@ interface ExecutionContext {
 export const flowService = {
   list(): BotFlow[] {
     const db = getProDatabase();
-    const rows = db.prepare('SELECT * FROM pro_flows ORDER BY updated_at DESC').all() as any[];
+    const rows = db.prepare('SELECT * FROM pro_flows ORDER BY priority ASC, updated_at DESC').all() as any[];
     return rows.map(parseFlowRow);
   },
 
@@ -62,7 +67,7 @@ export const flowService = {
     return row ? parseFlowRow(row) : null;
   },
 
-  create(data: { name: string; description?: string; client_id?: string; trigger_type?: string; trigger_config?: Record<string, any>; nodes?: FlowNode[]; edges?: FlowEdge[] }): BotFlow {
+  create(data: { name: string; description?: string; client_id?: string; trigger_type?: string; trigger_config?: Record<string, any>; nodes?: FlowNode[]; edges?: FlowEdge[]; status?: BotFlow['status']; priority?: number; dedupe_window_seconds?: number; settings?: Record<string, any> }): BotFlow {
     const db = getProDatabase();
     const id = randomUUID();
     db.prepare(`
@@ -73,10 +78,16 @@ export const flowService = {
       data.trigger_type ?? 'message', JSON.stringify(data.trigger_config ?? {}),
       JSON.stringify(data.nodes ?? []), JSON.stringify(data.edges ?? []),
     );
+    this.update(id, {
+      status: data.status ?? 'draft',
+      priority: data.priority ?? 100,
+      dedupe_window_seconds: data.dedupe_window_seconds ?? 30,
+      settings: data.settings ?? {},
+    });
     return this.get(id)!;
   },
 
-  update(id: string, data: Partial<{ name: string; description: string; client_id: string; trigger_type: string; trigger_config: Record<string, any>; nodes: FlowNode[]; edges: FlowEdge[]; variables: Record<string, any>; enabled: boolean }>): BotFlow {
+  update(id: string, data: Partial<{ name: string; description: string; client_id: string; trigger_type: string; trigger_config: Record<string, any>; nodes: FlowNode[]; edges: FlowEdge[]; variables: Record<string, any>; enabled: boolean; status: BotFlow['status']; priority: number; dedupe_window_seconds: number; settings: Record<string, any> }>): BotFlow {
     const db = getProDatabase();
     const sets: string[] = ["updated_at = datetime('now')"];
     const params: any[] = [];
@@ -90,6 +101,10 @@ export const flowService = {
     if (data.edges !== undefined) { sets.push('edges = ?'); params.push(JSON.stringify(data.edges)); }
     if (data.variables !== undefined) { sets.push('variables = ?'); params.push(JSON.stringify(data.variables)); }
     if (data.enabled !== undefined) { sets.push('enabled = ?'); params.push(data.enabled ? 1 : 0); }
+    if (data.status !== undefined) { sets.push('status = ?'); params.push(data.status); }
+    if (data.priority !== undefined) { sets.push('priority = ?'); params.push(Math.max(0, Math.min(9999, Number(data.priority)))); }
+    if (data.dedupe_window_seconds !== undefined) { sets.push('dedupe_window_seconds = ?'); params.push(Math.max(0, Math.min(86400, Number(data.dedupe_window_seconds)))); }
+    if (data.settings !== undefined) { sets.push('settings = ?'); params.push(JSON.stringify(data.settings)); }
 
     params.push(id);
     db.prepare(`UPDATE pro_flows SET ${sets.join(', ')} WHERE id = ?`).run(...params);
@@ -112,6 +127,10 @@ export const flowService = {
       trigger_config: flow.trigger_config,
       nodes: flow.nodes,
       edges: flow.edges,
+      status: flow.status,
+      priority: flow.priority,
+      dedupe_window_seconds: flow.dedupe_window_seconds,
+      settings: flow.settings,
     });
   },
 
@@ -125,6 +144,21 @@ export const flowService = {
 
 export async function executeFlow(flow: BotFlow, clientId: string, jid: string, incomingMessage: string): Promise<void> {
   const db = getProDatabase();
+
+  if (!flow.enabled || flow.status === 'paused') return;
+
+  const hash = createHash('sha256').update(incomingMessage.trim().toLowerCase()).digest('hex');
+  const windowSeconds = flow.dedupe_window_seconds ?? 30;
+  if (windowSeconds > 0) {
+    const duplicate = db.prepare(`
+      SELECT 1 FROM pro_flow_dedup
+      WHERE flow_id = ? AND jid = ? AND message_hash = ?
+        AND created_at >= datetime('now', ?)
+      LIMIT 1
+    `).get(flow.id, jid, hash, `-${windowSeconds} seconds`);
+    if (duplicate) return;
+    db.prepare('INSERT OR REPLACE INTO pro_flow_dedup (flow_id, jid, message_hash) VALUES (?, ?, ?)').run(flow.id, jid, hash);
+  }
 
   // Check if there's a pending conversation state (user was waiting for input)
   const existingState = db.prepare(
@@ -205,6 +239,15 @@ async function executeNode(flow: BotFlow, node: FlowNode, ctx: ExecutionContext)
       if (session?.sock && text) {
         await session.sock.sendMessage(ctx.jid, { text });
       }
+      return getNextNode(flow, node.id);
+    }
+
+    case 'send_buttons': {
+      // Provider button payloads vary; use a numbered text menu as a safe fallback.
+      const title = interpolateVars(node.data.message || '', ctx.variables);
+      const buttons = Array.isArray(node.data.buttons) ? node.data.buttons : [];
+      const text = buttons.length ? `${title}\n\n${buttons.map((b: string, i: number) => `${i + 1}. ${b}`).join('\n')}` : title;
+      if (session?.sock && text) await session.sock.sendMessage(ctx.jid, { text });
       return getNextNode(flow, node.id);
     }
 
@@ -290,6 +333,66 @@ async function executeNode(flow: BotFlow, node: FlowNode, ctx: ExecutionContext)
           contactsService.update(contact.id, { tags: [...contact.tags, tag.name] });
         }
       }
+      return getNextNode(flow, node.id);
+    }
+
+    case 'human_handoff': {
+      const contact = contactsService.getByJid(ctx.jid);
+      if (contact) {
+        const tags = contactsService.listTags();
+        let tag = tags.find(t => t.name === 'human-handoff');
+        if (!tag) tag = contactsService.createTag('human-handoff');
+        contactsService.update(contact.id, { tags: [...new Set([...contact.tags, tag.name])] });
+      }
+      const text = interpolateVars(node.data.message || 'A human agent will assist you shortly.', ctx.variables);
+      if (session?.sock) await session.sock.sendMessage(ctx.jid, { text });
+      return getNextNode(flow, node.id);
+    }
+
+    case 'business_hours': {
+      const now = new Date();
+      const day = now.getDay();
+      const hour = now.getHours();
+      ctx.variables.business_hours_open = day >= 1 && day <= 5 && hour >= 9 && hour < 18;
+      return getNextNode(flow, node.id);
+    }
+
+    case 'follow_up': {
+      ctx.variables.follow_up_delay_hours = Number(node.data.delay_hours || 24);
+      ctx.variables.follow_up_message = interpolateVars(node.data.message || '', ctx.variables);
+      const contact = contactsService.getByJid(ctx.jid);
+      if (contact) {
+        const tags = contactsService.listTags();
+        let tag = tags.find(t => t.name === 'follow-up');
+        if (!tag) tag = contactsService.createTag('follow-up');
+        contactsService.update(contact.id, { tags: [...new Set([...contact.tags, tag.name])] });
+      }
+      return getNextNode(flow, node.id);
+    }
+
+    case 'broadcast_optin': {
+      const contact = contactsService.getByJid(ctx.jid);
+      if (contact) {
+        const tags = contactsService.listTags();
+        let tag = tags.find(t => t.name === 'broadcast-opt-in');
+        if (!tag) tag = contactsService.createTag('broadcast-opt-in');
+        contactsService.update(contact.id, { tags: [...new Set([...contact.tags, tag.name])] });
+      }
+      ctx.variables.broadcast_opt_in = true;
+      return getNextNode(flow, node.id);
+    }
+
+    case 'order_status': {
+      const endpoint = interpolateVars(node.data.status_endpoint || '', ctx.variables);
+      if (endpoint) {
+        try {
+          const resp = await axios.get(endpoint, { timeout: 10000 });
+          ctx.variables.order_status = typeof resp.data === 'string' ? resp.data : JSON.stringify(resp.data);
+        } catch { ctx.variables.order_status = 'Status lookup is temporarily unavailable.'; }
+      } else {
+        ctx.variables.order_status = 'Order status lookup is not configured yet.';
+      }
+      if (session?.sock) await session.sock.sendMessage(ctx.jid, { text: `Order status: ${ctx.variables.order_status}` });
       return getNextNode(flow, node.id);
     }
 
@@ -408,6 +511,10 @@ function parseFlowRow(row: any): BotFlow {
     edges: JSON.parse(row.edges || '[]'),
     variables: JSON.parse(row.variables || '{}'),
     enabled: row.enabled === 1,
+    status: row.status || (row.enabled === 1 ? 'published' : 'draft'),
+    priority: Number(row.priority ?? 100),
+    dedupe_window_seconds: Number(row.dedupe_window_seconds ?? 30),
+    settings: JSON.parse(row.settings || '{}'),
     created_at: row.created_at,
     updated_at: row.updated_at,
   };

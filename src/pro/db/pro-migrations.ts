@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3';
 import { migration001Pro } from './migrations/001-pro-tables.js';
 import { migration002Flows } from './migrations/002-flows.js';
+import { migration003FlowControls } from './migrations/003-flow-controls.js';
 
 interface Migration {
   version: number;
@@ -11,6 +12,7 @@ interface Migration {
 const proMigrations: Migration[] = [
   migration001Pro,
   migration002Flows,
+  migration003FlowControls,
 ];
 
 export function runProMigrations(db: Database.Database): void {

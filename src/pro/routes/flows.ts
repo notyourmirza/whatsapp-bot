@@ -14,9 +14,9 @@ router.get('/pro/flows', (_req: Request, res: Response) => {
 // ─── POST /pro/flows — create flow ──────────────────────────────────────────
 
 router.post('/pro/flows', (req: Request, res: Response) => {
-  const { name, description, client_id, trigger_type, trigger_config, nodes, edges } = req.body;
+  const { name, description, client_id, trigger_type, trigger_config, nodes, edges, status, priority, dedupe_window_seconds, settings } = req.body;
   if (!name) { res.status(400).json({ error: 'name is required' }); return; }
-  const flow = flowService.create({ name, description, client_id, trigger_type, trigger_config, nodes, edges });
+  const flow = flowService.create({ name, description, client_id, trigger_type, trigger_config, nodes, edges, status, priority, dedupe_window_seconds, settings });
   res.status(201).json({ success: true, flow });
 });
 
@@ -44,8 +44,21 @@ router.put('/pro/flows/:id', (req: Request, res: Response) => {
 router.put('/pro/flows/:id/toggle', (req: Request, res: Response) => {
   const flow = flowService.get(String(req.params.id));
   if (!flow) { res.status(404).json({ error: 'Flow not found' }); return; }
-  const updated = flowService.update(flow.id, { enabled: !flow.enabled });
+  const enabled = !flow.enabled;
+  const updated = flowService.update(flow.id, { enabled, status: enabled ? 'published' : 'paused' });
   res.json({ success: true, flow: updated });
+});
+
+router.put('/pro/flows/:id/publish', (req: Request, res: Response) => {
+  const flow = flowService.get(String(req.params.id));
+  if (!flow) { res.status(404).json({ error: 'Flow not found' }); return; }
+  res.json({ success: true, flow: flowService.update(flow.id, { enabled: true, status: 'published' }) });
+});
+
+router.put('/pro/flows/:id/pause', (req: Request, res: Response) => {
+  const flow = flowService.get(String(req.params.id));
+  if (!flow) { res.status(404).json({ error: 'Flow not found' }); return; }
+  res.json({ success: true, flow: flowService.update(flow.id, { enabled: false, status: 'paused' }) });
 });
 
 // ─── POST /pro/flows/:id/test — test execute with a fake message ────────────
@@ -79,6 +92,18 @@ router.get('/pro/flows/:id/executions', (req: Request, res: Response) => {
   const limit = parseInt(req.query['limit'] as string) || 50;
   const executions = flowService.getExecutions(String(req.params.id), limit);
   res.json({ executions, total: executions.length });
+});
+
+router.get('/pro/flows/:id/analytics', (req: Request, res: Response) => {
+  const flow = flowService.get(String(req.params.id));
+  if (!flow) { res.status(404).json({ error: 'Flow not found' }); return; }
+  const executions = flowService.getExecutions(flow.id, 1000);
+  const summary = executions.reduce((acc: Record<string, number>, item: any) => {
+    acc.total += 1;
+    acc[item.status] = (acc[item.status] || 0) + 1;
+    return acc;
+  }, { total: 0, completed: 0, error: 0, running: 0 });
+  res.json({ flow: { id: flow.id, name: flow.name, status: flow.status, priority: flow.priority }, summary });
 });
 
 // ─── GET /pro/flows/:id/export — export flow as JSON ─────────────────────────
