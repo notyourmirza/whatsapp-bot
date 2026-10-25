@@ -171,13 +171,22 @@ export default function FlowBuilder() {
             <Button size="sm" onClick={() => saveMutation.mutate()} isLoading={saveMutation.isPending}>
               <Save className="h-3.5 w-3.5" /> Save
             </Button>
-            <input value={testMessage} onChange={e => setTestMessage(e.target.value)} placeholder="Test customer message" className="h-8 w-40 rounded-md border border-[var(--border)] bg-[var(--bg)] px-2 text-xs text-[var(--text)]" />
             <Button size="sm" variant="secondary" onClick={() => testMutation.mutate()} isLoading={testMutation.isPending}>
               <Play className="h-3.5 w-3.5" /> Test
             </Button>
           </div>
           <Button size="sm" variant={flow?.enabled ? 'danger' : 'primary'} onClick={() => toggleMutation.mutate()}>
             {flow?.enabled ? <><PowerOff className="h-3.5 w-3.5" /> Disable</> : <><Power className="h-3.5 w-3.5" /> Enable</>}
+          </Button>
+        </div>
+
+        <div className="mx-3 mt-3 flex flex-col gap-2 rounded-lg border border-sky-500/30 bg-sky-500/5 p-3 sm:mx-4 sm:flex-row sm:items-end">
+          <label className="flex-1 text-xs font-semibold text-[var(--text-sec)]">
+            TEST CUSTOMER MESSAGE
+            <input value={testMessage} onChange={e => setTestMessage(e.target.value)} placeholder="Type HI, 1, 2, 3 or HUMAN" className="mt-1 h-10 w-full rounded-md border border-sky-500/30 bg-[var(--bg)] px-3 text-sm text-[var(--text)] outline-none focus:border-sky-400" />
+          </label>
+          <Button size="sm" variant="secondary" onClick={() => testMutation.mutate()} isLoading={testMutation.isPending}>
+            <Play className="h-3.5 w-3.5" /> RUN SIMULATION
           </Button>
         </div>
 
