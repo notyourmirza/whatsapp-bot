@@ -212,7 +212,11 @@ export async function executeFlow(flow: BotFlow, clientId: string, jid: string, 
 export function simulateFlow(flow: BotFlow, incomingMessage: string): { message: string; steps: string[]; waiting: boolean } {
   const variables: Record<string, any> = { ...(flow.variables || {}), message: incomingMessage, sender: 'test@s.whatsapp.net', sender_number: 'TEST_CUSTOMER' };
   const steps: string[] = [];
-  let nodeId: string | null = flow.nodes.find(n => n.type === 'trigger' || n.type === 'start')?.id ?? null;
+  const menuChoice = /^(1|2|3|0|4|services?|pricing|support|human|agent)$/i.test(incomingMessage.trim());
+  const waitNode = flow.nodes.find(n => n.type === 'wait_for_reply');
+  let nodeId: string | null = menuChoice && waitNode
+    ? getNextNode(flow, waitNode.id)
+    : flow.nodes.find(n => n.type === 'trigger' || n.type === 'start')?.id ?? null;
   let waiting = false;
   let count = 0;
 
