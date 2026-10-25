@@ -196,6 +196,8 @@ async function start(): Promise<void> {
   // Hook flow engine into message events
   eventBus.on('message.received', async (event) => {
     try {
+      // Defensive guard: automation must only handle direct inbound customer messages.
+      if (event.fromMe || event.isGroup) return;
       const flows = findMatchingFlows(event.clientId, event.from, event.body);
       for (const flow of flows) {
         await executeFlow(flow, event.clientId, event.from, event.body);

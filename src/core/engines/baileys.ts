@@ -120,6 +120,9 @@ export class BaileysEngine implements WhatsAppEngine {
       for (const msg of messages) {
         if (!msg.message || isJidBroadcast(msg.key.remoteJid ?? '')) continue;
 
+        // Sent messages are also delivered by Baileys; they are not customer input.
+        if (msg.key.fromMe) continue;
+
         const from = msg.key.remoteJid ?? '';
         const body =
           msg.message.conversation ??
@@ -141,6 +144,7 @@ export class BaileysEngine implements WhatsAppEngine {
         eventBus.emit('message.received', {
           clientId: id,
           from,
+          fromMe: false,
           body,
           timestamp,
           isGroup,

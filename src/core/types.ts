@@ -179,6 +179,7 @@ export type WaConvoEventName =
 export interface MessageReceivedEvent {
   clientId: string;
   from: string;
+  fromMe: boolean;
   body: string;
   timestamp: number;
   isGroup: boolean;

@@ -171,8 +171,12 @@ async function connectToWhatsApp(session: ClientSession): Promise<void> {
   sock.ev.on('messages.upsert', async ({ messages, type }) => {
     if (type !== 'notify') return;
 
-    for (const msg of messages) {
-      if (!msg.message || isJidBroadcast(msg.key.remoteJid ?? '')) continue;
+      for (const msg of messages) {
+        if (!msg.message || isJidBroadcast(msg.key.remoteJid ?? '')) continue;
+
+        // Never feed our own outgoing messages back into automation flows.
+        // Baileys emits sent messages through messages.upsert as well.
+        if (msg.key.fromMe) continue;
 
       const from = msg.key.remoteJid ?? '';
       const body =
@@ -195,10 +199,11 @@ async function connectToWhatsApp(session: ClientSession): Promise<void> {
       const msgType = Object.keys(msg.message)[0] ?? 'unknown';
 
       // Emit event
-      eventBus.emit('message.received', {
-        clientId: id,
-        from,
-        body,
+        eventBus.emit('message.received', {
+          clientId: id,
+          from,
+          fromMe: false,
+          body,
         timestamp,
         isGroup,
         hasMedia,

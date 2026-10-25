@@ -163,6 +163,7 @@ export class OfficialEngine implements WhatsAppEngine {
             eventBus.emit('message.received', {
               clientId: this.id,
               from: `${from}@s.whatsapp.net`,
+              fromMe: false,
               body,
               timestamp,
               isGroup: false,
