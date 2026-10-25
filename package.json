@@ -11,7 +11,7 @@
     "build": "tsc --project tsconfig.json",
     "build:dashboard": "cd dashboard && npm install && npm run build",
     "build:all": "npm run build && npm run build:dashboard",
-    "start": "node dist/api/server.js",
+    "start": "node hostinger-bootstrap.cjs",
     "dev": "ts-node-dev --respawn --transpile-only --esm src/api/server.ts",
     "dev:dashboard": "cd dashboard && npm run dev",
     "cli": "ts-node --esm src/cli/index.ts",

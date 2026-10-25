@@ -72,8 +72,10 @@ if (sslConfig?.enabled && sslConfig.certPath && sslConfig.keyPath) {
 }
 
 const serverCfg = config.get<{ port: number; host: string }>('server');
-const port = serverCfg?.port ?? parseInt(process.env['PORT'] ?? '3000', 10);
-const host = serverCfg?.host ?? process.env['HOST'] ?? '0.0.0.0';
+// Hosting panels provide PORT dynamically. HOST must be externally bindable;
+// environment variables take precedence over local config.json values.
+const port = parseInt(process.env['PORT'] ?? String(serverCfg?.port ?? 3000), 10);
+const host = process.env['HOST'] ?? serverCfg?.host ?? '0.0.0.0';
 
 // ─── Global Middleware ────────────────────────────────────────────────────────
 
@@ -96,14 +98,18 @@ if (existsSync(dashboardDistPath)) {
 
 // ─── Public Routes ────────────────────────────────────────────────────────────
 
-app.get('/', (_req, res) => {
+app.get('/', (req, res) => {
+  const forwardedProto = req.header('x-forwarded-proto');
+  const requestProtocol = forwardedProto?.split(',')[0]?.trim() ?? req.protocol;
+  const websocketProtocol = requestProtocol === 'https' ? 'wss' : 'ws';
+  const publicHost = req.get('host') ?? `${host}:${port}`;
   res.json({
     name: 'WA Convo',
     description: 'WhatsApp Automation Platform',
     version: '4.2.0',
     engine: 'Baileys + Official Cloud API',
     docs: 'https://github.com/sajidmahamud835/whatsapp-bot',
-    websocket: `ws://${host}:${port}/ws`,
+    websocket: `${websocketProtocol}://${publicHost}/ws`,
   });
 });
 

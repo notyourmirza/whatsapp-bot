@@ -81,6 +81,10 @@ class WebSocketManager {
   }
 }
 
-// Singleton — connects to the API's WebSocket
-const wsUrl = (import.meta.env.VITE_WS_URL || 'ws://localhost:8585') + '/ws';
+// Use the deployed page origin so HTTPS uses WSS and no local hostname leaks
+// into production. VITE_WS_URL remains available for a separate API host.
+const pageProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+const pageWsUrl = `${pageProtocol}//${window.location.host}`;
+const wsBaseUrl = import.meta.env.VITE_WS_URL || pageWsUrl;
+const wsUrl = wsBaseUrl.replace(/\/$/, '') + '/ws';
 export const wsManager = new WebSocketManager(wsUrl);
