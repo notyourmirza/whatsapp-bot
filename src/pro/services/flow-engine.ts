@@ -169,7 +169,7 @@ export async function executeFlow(flow: BotFlow, clientId: string, jid: string, 
   const variables: Record<string, any> = {
     message: incomingMessage,
     sender: jid,
-    sender_number: jid.replace('@s.whatsapp.net', ''),
+    sender_number: jid.split('@')[0],
     timestamp: Date.now(),
     ...(flow.variables || {}),
   };
@@ -235,7 +235,7 @@ async function executeNode(flow: BotFlow, node: FlowNode, ctx: ExecutionContext)
     }
 
     case 'send_message': {
-      const text = interpolateVars(node.data.message || '', ctx.variables);
+      const text = formatOutboundText(interpolateVars(node.data.message || '', ctx.variables));
       if (session?.sock && text) {
         await session.sock.sendMessage(ctx.jid, { text });
       }
@@ -246,14 +246,16 @@ async function executeNode(flow: BotFlow, node: FlowNode, ctx: ExecutionContext)
       // Provider button payloads vary; use a numbered text menu as a safe fallback.
       const title = interpolateVars(node.data.message || '', ctx.variables);
       const buttons = Array.isArray(node.data.buttons) ? node.data.buttons : [];
-      const text = buttons.length ? `${title}\n\n${buttons.map((b: string, i: number) => `${i + 1}. ${b}`).join('\n')}` : title;
+      const hasMenu = buttons.some((button: string) => title.toLowerCase().includes(button.toLowerCase())) || /(^|\n)\s*\d+[.)]/.test(title);
+      const menu = buttons.length && !hasMenu ? `${title}\n\n${buttons.map((b: string, i: number) => `${i + 1}. ${b}`).join('\n')}` : title;
+      const text = formatOutboundText(menu);
       if (session?.sock && text) await session.sock.sendMessage(ctx.jid, { text });
       return getNextNode(flow, node.id);
     }
 
     case 'send_media': {
       const url = interpolateVars(node.data.url || '', ctx.variables);
-      const caption = interpolateVars(node.data.caption || '', ctx.variables);
+      const caption = formatOutboundText(interpolateVars(node.data.caption || '', ctx.variables));
       if (session?.sock && url) {
         const resp = await axios.get(url, { responseType: 'arraybuffer', timeout: 30000 });
         const buffer = Buffer.from(resp.data);
@@ -274,7 +276,7 @@ async function executeNode(flow: BotFlow, node: FlowNode, ctx: ExecutionContext)
       if (templateId) {
         const template = templatesService.get(templateId);
         if (template && session?.sock) {
-          const text = templatesService.render(template.body, ctx.variables);
+          const text = formatOutboundText(templatesService.render(template.body, ctx.variables));
           await session.sock.sendMessage(ctx.jid, { text });
         }
       }
@@ -287,7 +289,7 @@ async function executeNode(flow: BotFlow, node: FlowNode, ctx: ExecutionContext)
         const reply = await aiManager.chat(ctx.jid, ctx.message, provider);
         ctx.variables.ai_reply = reply;
         if (session?.sock && reply) {
-          await session.sock.sendMessage(ctx.jid, { text: reply });
+          await session.sock.sendMessage(ctx.jid, { text: formatOutboundText(reply) });
         }
       } catch {
         ctx.variables.ai_reply = '';
@@ -529,6 +531,12 @@ function interpolateVars(template: string, vars: Record<string, any>): string {
   return template.replace(/\{\{(\w+)\}\}/g, (_match, key: string) => {
     return String(vars[key] ?? '');
   });
+}
+
+function formatOutboundText(text: string): string {
+  const normalized = text.trim().toLocaleUpperCase();
+  if (!normalized) return '';
+  return normalized.startsWith('*') && normalized.endsWith('*') ? normalized : `*${normalized}*`;
 }
 
 function evaluateCondition(field: string, operator: string, value: string): boolean {

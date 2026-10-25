@@ -2,7 +2,7 @@ import { getProDatabase } from '../db/pro-database.js';
 import { flowService } from './flow-engine.js';
 import { templatesService } from './templates.js';
 
-const SEED_VERSION = '2';
+const SEED_VERSION = '3';
 
 function node(id: string, type: string, x: number, y: number, data: Record<string, any> = {}) {
   return { id, type, position: { x, y }, data: { label: type.replace(/_/g, ' '), ...data } };
@@ -21,6 +21,8 @@ export function seedBuiltinData(): void {
   const oldNames = [
     'Welcome Bot', 'Auto-Reply (Away)', 'AI Support Agent', 'Lead Capture', 'Feedback Collector',
     'Urgent Message Router', 'Unsubscribe Handler', 'Re-subscribe Handler', 'AI Chatbot', 'Business Hours Info',
+    'Welcome & Interactive Menu', 'AI Auto-Reply by Language', 'Services Inquiry', 'Lead Collection',
+    'Human Handoff', 'VIP Contact Rules', 'Business Hours Reply', 'Follow-up Reminder', 'Order Status', 'Opt-in Broadcast',
   ];
   for (const name of oldNames) db.prepare('DELETE FROM pro_flows WHERE name = ?').run(name);
 
@@ -38,7 +40,27 @@ export function seedBuiltinData(): void {
   const flows = [
     {
       name: 'Welcome & Interactive Menu', description: 'Greeting menu for services, pricing, support, and human help.', trigger_type: 'keyword', trigger_config: { keywords: ['hi', 'hello', 'hey', 'start', 'menu'] }, priority: 10,
-      nodes: [node('t1', 'trigger', 250, 0, { label: 'Greeting keyword' }), node('m1', 'send_buttons', 250, 120, { label: 'Welcome menu', message: 'Hi {{sender_number}}! Welcome. Choose an option:\n\n1. Services\n2. Pricing\n3. Support\n0. Human agent', buttons: ['Services', 'Pricing', 'Support', 'Human agent'] })], edges: [edge('e1', 't1', 'm1')],
+      nodes: [
+        node('t1', 'trigger', 250, 0, { label: 'Greeting keyword' }),
+        node('m1', 'send_buttons', 250, 120, { label: 'Welcome menu', message: 'Hi {{sender_number}}! Welcome. Choose an option:', buttons: ['Services', 'Pricing', 'Support', 'Human agent'] }),
+        node('w1', 'wait_for_reply', 250, 240, { label: 'Wait for menu choice' }),
+        node('c1', 'condition', 250, 360, { label: 'Services? (1)', field: '{{message}}', operator: 'equals', value: '1' }),
+        node('s1', 'send_message', 60, 520, { label: 'Services reply', message: 'We provide websites, software, mobile apps, and maintenance. Reply SERVICE to tell us what you need.' }),
+        node('c2', 'condition', 250, 520, { label: 'Pricing? (2)', field: '{{message}}', operator: 'equals', value: '2' }),
+        node('p1', 'send_message', 60, 680, { label: 'Pricing reply', message: 'Please tell us which service you need and your budget. Our team will prepare a quote.' }),
+        node('c3', 'condition', 250, 680, { label: 'Support? (3)', field: '{{message}}', operator: 'equals', value: '3' }),
+        node('u1', 'send_message', 60, 840, { label: 'Support reply', message: 'Please describe your issue. Reply HUMAN if you want an agent.' }),
+        node('c4', 'condition', 250, 840, { label: 'Human? (0/4)', field: '{{message}}', operator: 'regex', value: '^(0|4)$' }),
+        node('h1', 'human_handoff', 60, 1000, { label: 'Human handoff', message: 'A human agent has been requested. We will reply shortly.' }),
+        node('x1', 'send_message', 420, 1000, { label: 'Invalid choice', message: 'Please reply with 1 for Services, 2 for Pricing, 3 for Support, or 0 for a human agent.' }),
+      ],
+      edges: [
+        edge('e1', 't1', 'm1'), edge('e2', 'm1', 'w1'), edge('e3', 'w1', 'c1'),
+        edge('e4', 'c1', 's1', 'true'), edge('e5', 'c1', 'c2', 'false'),
+        edge('e6', 'c2', 'p1', 'true'), edge('e7', 'c2', 'c3', 'false'),
+        edge('e8', 'c3', 'u1', 'true'), edge('e9', 'c3', 'c4', 'false'),
+        edge('e10', 'c4', 'h1', 'true'), edge('e11', 'c4', 'x1', 'false'),
+      ],
     },
     {
       name: 'AI Auto-Reply by Language', description: 'Replies in the customer language when AI is requested.', trigger_type: 'keyword', trigger_config: { keywords: ['ask', 'question', 'help', 'ai'] }, priority: 20,
@@ -79,7 +101,10 @@ export function seedBuiltinData(): void {
   ];
 
   for (const flow of flows) {
-    try { flowService.create({ ...flow, status: 'draft', dedupe_window_seconds: 30 } as any); } catch { /* keep startup resilient */ }
+    try {
+      const created = flowService.create({ ...flow, status: 'published', dedupe_window_seconds: 30 } as any);
+      flowService.update(created.id, { enabled: true, status: 'published' });
+    } catch { /* keep startup resilient */ }
   }
   db.prepare("INSERT OR REPLACE INTO _pro_meta (key, value) VALUES ('flow_seed_version', ?)").run(SEED_VERSION);
 }
