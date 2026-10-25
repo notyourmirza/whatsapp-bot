@@ -11,7 +11,6 @@ import { Boom } from '@hapi/boom';
 import axios from 'axios';
 import path from 'path';
 import { resolve } from 'path';
-import { fileURLToPath } from 'url';
 import type { ClientSession } from './types.js';
 import { config } from './config.js';
 import { baileysLogger, childLogger } from './logger.js';
@@ -22,12 +21,16 @@ import { OfficialEngine } from './engines/official.js';
 import { aiManager } from './ai/manager.js';
 import { messageStore } from './db/message-store.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const log = childLogger('client-manager');
 
-function getAuthDir(): string {
-  const authDir = config.get<string>('clients.authDir') ?? '.auth';
-  return resolve(__dirname, '..', '..', authDir);
+export function getAuthDir(): string {
+  // Do not store WhatsApp credentials inside Hostinger's versioned release
+  // directory: every deployment creates a new version and would trigger QR
+  // pairing again. HOME and WA_AUTH_DIR are stable across releases.
+  const configured = process.env.WA_AUTH_DIR || config.get<string>('clients.authDir');
+  if (configured && path.isAbsolute(configured)) return configured;
+  if (process.env.WA_AUTH_DIR) return resolve(process.env.WA_AUTH_DIR);
+  return path.join(process.env.HOME || process.cwd(), '.wa-convo-auth');
 }
 
 function getClientCount(): number {

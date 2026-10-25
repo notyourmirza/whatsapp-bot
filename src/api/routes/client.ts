@@ -1,11 +1,9 @@
 import { Router } from 'express';
 import type { Request, Response } from 'express';
 import { existsSync } from 'fs';
-import { resolve, dirname } from 'path';
-import { fileURLToPath } from 'url';
+import { resolve } from 'path';
 import { rmSync } from 'fs';
-import { sessions, startSession, destroySession, logoutSession, sendText, sendMedia, toJid } from '../../core/client-manager.js';
-import { config } from '../../core/config.js';
+import { sessions, startSession, destroySession, logoutSession, sendText, sendMedia, toJid, getAuthDir } from '../../core/client-manager.js';
 import { messageStore } from '../../core/db/message-store.js';
 import type {
   SendMessageBody,
@@ -124,9 +122,7 @@ router.post('/:id/reset', async (req: Request, res: Response) => {
     session.qrData = null;
 
     // 3. Delete auth folder
-    const authDir = config.get<string>('clients.authDir') ?? '.auth';
-    const __dir = dirname(fileURLToPath(import.meta.url));
-    const authPath = resolve(__dir, '..', '..', '..', authDir, `session-${id}`);
+    const authPath = resolve(getAuthDir(), `session-${id}`);
     if (existsSync(authPath)) {
       rmSync(authPath, { recursive: true, force: true });
     }

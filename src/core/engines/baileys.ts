@@ -10,19 +10,15 @@ import type { WASocket } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import axios from 'axios';
 import path from 'path';
-import { resolve } from 'path';
-import { fileURLToPath } from 'url';
 import type { WhatsAppEngine } from './types.js';
-import { config } from '../config.js';
 import { baileysLogger, childLogger } from '../logger.js';
 import { eventBus } from '../events.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const log = childLogger('baileys-engine');
 
 function getAuthDir(): string {
-  const authDir = config.get<string>('clients.authDir') ?? '.auth';
-  return resolve(__dirname, '..', '..', '..', authDir);
+  const configured = process.env.WA_AUTH_DIR;
+  return configured || path.join(process.env.HOME || process.cwd(), '.wa-convo-auth');
 }
 
 export class BaileysEngine implements WhatsAppEngine {
